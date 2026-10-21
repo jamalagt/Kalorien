@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Kalorien">
+<meta name="theme-color" content="#f3f5f1">
+<title>Kalorien-Scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+/* Layout: eine Spalte, Tagesring oben, Scan-Knopf als Hauptaktion, Liste darunter */
+:root{
+  --bg:#f3f5f1; --card:#ffffff; --fg:#1b2420; --muted:#66736c; --line:#dfe4de;
+  --accent:#2f7d57; --accent-fg:#ffffff; --warn:#c2552d; --soft:#e7efe9;
+  --display:"Bricolage Grotesque", ui-rounded, system-ui, sans-serif;
+  --body:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#121614; --card:#1b201d; --fg:#e8eee9; --muted:#97a39c; --line:#2c3430;
+  --accent:#5fbf8b; --accent-fg:#0d1a13; --warn:#ef8a62; --soft:#22302a; color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;-webkit-text-size-adjust:100%}
+body{padding:env(safe-area-inset-top,0) max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+main{max-width:520px;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding-top:16px}
+h1,h2{font-family:var(--display);margin:0;text-wrap:balance}
+h1{font-size:1.5rem}
+h2{font-size:1.05rem}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.daynav{display:flex;align-items:center;gap:4px}
+.daynav button{width:36px;height:36px}
+#dayLabel{font-weight:600;min-width:90px;text-align:center;font-size:.95rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.summary{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center}
+.ring{position:relative;width:120px;height:120px}
+.ring svg{transform:rotate(-90deg)}
+.ring .num{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.ring .num b{font-family:var(--display);font-size:1.6rem}
+.ring .num span{font-size:.75rem;color:var(--muted)}
+.macros{display:flex;flex-direction:column;gap:8px;font-variant-numeric:tabular-nums}
+.macro{display:flex;justify-content:space-between;font-size:.92rem}
+.macro span{color:var(--muted)}
+.goal{font-size:.85rem;color:var(--muted)}
+.goal button{background:none;border:0;color:var(--accent);font:inherit;text-decoration:underline;padding:0;cursor:pointer}
+button{font:inherit;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.primary{background:var(--accent);color:var(--accent-fg);border:0;font-weight:700;padding:16px;font-size:1.05rem;width:100%}
+.row{display:flex;gap:8px}
+.row>*{flex:1;min-width:0}
+.ghost{padding:12px}
+input{font:inherit;width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+label{font-size:.8rem;color:var(--muted);display:block;margin-bottom:4px;letter-spacing:.02em}
+#reader{width:100%;border-radius:12px;overflow:hidden;background:#000}
+.product{display:flex;gap:12px;align-items:flex-start}
+.product img{width:64px;height:64px;object-fit:contain;border-radius:8px;background:var(--soft)}
+.product .info{min-width:0}
+.product .name{font-weight:600}
+.product .brand,.small{color:var(--muted);font-size:.85rem}
+.stack{display:flex;flex-direction:column;gap:12px}
+.preview{background:var(--soft);border-radius:12px;padding:12px;font-variant-numeric:tabular-nums;font-size:.95rem}
+ul{list-style:none;margin:0;padding:0}
+li.entry{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 0;border-top:1px solid var(--line)}
+li.entry:first-child{border-top:0}
+.entry .t{min-width:0}
+.entry .t div:first-child{font-weight:600;overflow-wrap:anywhere}
+.entry .k{font-variant-numeric:tabular-nums;font-weight:600;white-space:nowrap}
+.del{border:0;background:none;color:var(--muted);font-size:1.3rem;width:32px;height:32px}
+.empty{color:var(--muted);font-size:.92rem}
+.err{color:var(--warn);font-size:.9rem}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Kalorien</h1>
+    <div class="daynav">
+      <button id="prevDay" aria-label="Vorheriger Tag">‹</button>
+      <div id="dayLabel">Heute</div>
+      <button id="nextDay" aria-label="Nächster Tag">›</button>
+    </div>
+  </div>
+
+  <section class="card summary" aria-label="Tagesübersicht">
+    <div class="ring">
+      <svg width="120" height="120" viewBox="0 0 120 120">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="var(--soft)" stroke-width="12"/>
+        <circle id="ringBar" cx="60" cy="60" r="52" fill="none" stroke="var(--accent)" stroke-width="12" stroke-linecap="round" stroke-dasharray="326.7" stroke-dashoffset="326.7"/>
+      </svg>
+      <div class="num"><b id="kcalTotal">0</b><span id="kcalLeft">von 2000 kcal</span></div>
+    </div>
+    <div class="macros">
+      <div class="macro"><span>Eiweiß</span><b id="mP">0 g</b></div>
+      <div class="macro"><span>Kohlenhydrate</span><b id="mC">0 g</b></div>
+      <div class="macro"><span>Fett</span><b id="mF">0 g</b></div>
+      <div class="goal">Tagesziel <b id="goalVal">2000</b> kcal · <button id="editGoal">ändern</button></div>
+      <div class="row" id="goalEdit" hidden>
+        <input id="goalInput" type="number" inputmode="numeric" min="500" max="6000" aria-label="Tagesziel in kcal">
+        <button id="saveGoal" class="ghost">OK</button>
+      </div>
+    </div>
+  </section>
+
+  <button class="primary" id="scanBtn">Barcode scannen</button>
+  <div class="row">
+    <button class="ghost" id="typeBtn">Barcode eintippen</button>
+    <button class="ghost" id="manualBtn">Ohne Barcode</button>
+  </div>
+
+  <section class="card stack" id="scanCard" hidden>
+    <div id="reader"></div>
+    <button class="ghost" id="stopScan">Abbrechen</button>
+  </section>
+
+  <section class="card stack" id="typeCard" hidden>
+    <div><label for="codeInput">Barcode-Nummer</label>
+    <input id="codeInput" inputmode="numeric" placeholder="z. B. 4008400402222"></div>
+    <button class="ghost" id="lookupBtn">Suchen</button>
+  </section>
+
+  <section class="card stack" id="productCard" hidden>
+    <div class="product">
+      <img id="pImg" alt="" hidden>
+      <div class="info">
+        <div class="name" id="pName"></div>
+        <div class="brand" id="pBrand"></div>
+        <div class="small" id="pPer100"></div>
+      </div>
+    </div>
+    <div><label for="grams">Menge in Gramm</label>
+    <input id="grams" type="number" inputmode="decimal" min="1" value="100"></div>
+    <div class="preview" id="pPreview"></div>
+    <div class="row">
+      <button class="ghost" id="cancelProduct">Verwerfen</button>
+      <button class="primary" id="addProduct" style="padding:12px">Hinzufügen</button>
+    </div>
+  </section>
+
+  <section class="card stack" id="manualCard" hidden>
+    <div><label for="mName">Was hast du gegessen?</label>
+    <input id="mName" placeholder="z. B. Apfel"></div>
+    <div><label for="mKcal">Kalorien (kcal)</label>
+    <input id="mKcal" type="number" inputmode="numeric" min="0"></div>
+    <div class="row">
+      <button class="ghost" id="cancelManual">Abbrechen</button>
+      <button class="primary" id="addManual" style="padding:12px">Hinzufügen</button>
+    </div>
+  </section>
+
+  <p class="err" id="msg" hidden></p>
+
+  <section class="card">
+    <h2>Gegessen</h2>
+    <ul id="list"></ul>
+    <p class="empty" id="empty">Noch nichts eingetragen. Scanne einen Barcode, um loszulegen.</p>
+  </section>
+
+  <p class="small">Nährwerte von Open Food Facts. Alles wird nur auf diesem Gerät gespeichert.</p>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const KEY = "kalorien-v1";
+let state = { goal: 2000, days: {} };
+try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) state = Object.assign(state, s); } catch(e){}
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){} };
+
+const iso = d => { const z = new Date(d); z.setMinutes(z.getMinutes() - z.getTimezoneOffset()); return z.toISOString().slice(0,10); };
+let day = iso(new Date());
+let current = null; // gescanntes Produkt
+let scanner = null;
+
+function dayLabel(d){
+  const today = iso(new Date());
+  const y = new Date(); y.setDate(y.getDate()-1);
+  if (d === today) return "Heute";
+  if (d === iso(y)) return "Gestern";
+  const [Y,M,D] = d.split("-"); return `${D}.${M}.`;
+}
+function shiftDay(n){
+  const d = new Date(day + "T12:00"); d.setDate(d.getDate()+n);
+  const next = iso(d);
+  if (next > iso(new Date())) return;
+  day = next; render();
+}
+const fmt = n => Math.round(n).toLocaleString("de-DE");
+const fmt1 = n => (Math.round(n*10)/10).toLocaleString("de-DE");
+
+function render(){
+  $("dayLabel").textContent = dayLabel(day);
+  $("nextDay").disabled = day === iso(new Date());
+  const items = state.days[day] || [];
+  const t = items.reduce((a,i)=>({k:a.k+i.kcal,p:a.p+(i.p||0),c:a.c+(i.c||0),f:a.f+(i.f||0)}),{k:0,p:0,c:0,f:0});
+  $("kcalTotal").textContent = fmt(t.k);
+  const left = state.goal - t.k;
+  $("kcalLeft").textContent = left >= 0 ? `noch ${fmt(left)} kcal` : `${fmt(-left)} kcal drüber`;
+  $("kcalLeft").style.color = left < 0 ? "var(--warn)" : "";
+  const C = 326.7, frac = Math.min(t.k / state.goal, 1);
+  $("ringBar").style.strokeDashoffset = C * (1 - frac);
+  $("ringBar").style.stroke = left < 0 ? "var(--warn)" : "var(--accent)";
+  $("mP").textContent = fmt1(t.p) + " g";
+  $("mC").textContent = fmt1(t.c) + " g";
+  $("mF").textContent = fmt1(t.f) + " g";
+  $("goalVal").textContent = fmt(state.goal);
+  const ul = $("list"); ul.innerHTML = "";
+  items.forEach((it, idx) => {
+    const li = document.createElement("li"); li.className = "entry";
+    const sub = it.g ? `${fmt(it.g)} g · ${it.time}` : it.time;
+    li.innerHTML = `<div class="t"><div></div><div class="small"></div></div><div class="row" style="flex:0 0 auto;align-items:center"><span class="k"></span><button class="del" aria-label="Löschen">×</button></div>`;
+    li.querySelector(".t div").textContent = it.name;
+    li.querySelector(".t .small").textContent = sub;
+    li.querySelector(".k").textContent = fmt(it.kcal) + " kcal";
+    li.querySelector(".del").onclick = () => { items.splice(idx,1); state.days[day] = items; save(); render(); };
+    ul.appendChild(li);
+  });
+  $("empty").hidden = items.length > 0;
+}
+
+function addEntry(e){
+  e.time = new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+  (state.days[day] ||= []).push(e); save(); render();
+}
+function showMsg(t){ $("msg").textContent = t; $("msg").hidden = !t; }
+function hideCards(){ ["scanCard","typeCard","productCard","manualCard"].forEach(id=>$(id).hidden = true); showMsg(""); }
+
+// --- Scannen ---
+async function startScan(){
+  hideCards(); $("scanCard").hidden = false;
+  try {
+    const F = Html5QrcodeSupportedFormats;
+    scanner = new Html5Qrcode("reader", { formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.QR_CODE], experimentalFeatures:{useBarCodeDetectorIfSupported:true}, verbose:false });
+    await scanner.start({ facingMode:"environment" }, { fps:10, qrbox:{ width:260, height:140 } },
+      async code => { await stopScan(); lookup(code); }, () => {});
+  } catch(err){
+    $("scanCard").hidden = true;
+    showMsg("Kamera ließ sich nicht starten. Erlaube den Kamerazugriff in den Einstellungen oder tippe den Barcode ein.");
+  }
+}
+async function stopScan(){
+  if (scanner){ try { await scanner.stop(); scanner.clear(); } catch(e){} scanner = null; }
+  $("scanCard").hidden = true;
+}
+
+// --- Produkt holen ---
+async function lookup(code){
+  code = String(code).replace(/\D/g,"");
+  if (!code){ showMsg("Bitte eine Barcode-Nummer eingeben."); return; }
+  hideCards(); showMsg("Suche Produkt …"); $("msg").style.color = "var(--muted)";
+  try {
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,product_name_de,brands,nutriments,serving_quantity,image_front_small_url`);
+    const j = await r.json();
+    $("msg").style.color = "";
+    if (j.status !== 1 || !j.product){ showMsg(`Produkt ${code} nicht gefunden. Trag es über „Ohne Barcode“ ein.`); return; }
+    const p = j.product, n = p.nutriments || {};
+    let kcal = n["energy-kcal_100g"];
+    if (kcal == null && n["energy_100g"] != null) kcal = n["energy_100g"] / 4.184;
+    if (kcal == null){ showMsg("Für dieses Produkt fehlen die Kalorienangaben. Trag es über „Ohne Barcode“ ein."); return; }
+    current = { name: p.product_name_de || p.product_name || `Produkt ${code}`, brand: p.brands || "", kcal: +kcal,
+      p: +(n.proteins_100g||0), c: +(n.carbohydrates_100g||0), f: +(n.fat_100g||0), img: p.image_front_small_url };
+    showMsg("");
+    $("pName").textContent = current.name;
+    $("pBrand").textContent = current.brand;
+    $("pPer100").textContent = `${fmt(current.kcal)} kcal pro 100 g`;
+    if (current.img){ $("pImg").src = current.img; $("pImg").hidden = false; } else $("pImg").hidden = true;
+    $("grams").value = p.serving_quantity ? Math.round(p.serving_quantity) : 100;
+    updatePreview();
+    $("productCard").hidden = false;
+  } catch(e){
+    $("msg").style.color = "";
+    showMsg("Keine Verbindung zu Open Food Facts. Prüfe dein Internet und versuch es nochmal.");
+  }
+}
+function updatePreview(){
+  if (!current) return;
+  const g = +$("grams").value || 0, f = g/100;
+  $("pPreview").textContent = `${fmt(current.kcal*f)} kcal · ${fmt1(current.p*f)} g Eiweiß · ${fmt1(current.c*f)} g KH · ${fmt1(current.f*f)} g Fett`;
+}
+
+// --- Events ---
+$("scanBtn").onclick = startScan;
+$("stopScan").onclick = stopScan;
+$("typeBtn").onclick = () => { stopScan(); hideCards(); $("typeCard").hidden = false; $("codeInput").focus(); };
+$("lookupBtn").onclick = () => lookup($("codeInput").value);
+$("codeInput").onkeydown = e => { if (e.key === "Enter") lookup($("codeInput").value); };
+$("grams").oninput = updatePreview;
+$("cancelProduct").onclick = () => { current = null; hideCards(); };
+$("addProduct").onclick = () => {
+  const g = +$("grams").value; if (!current || !(g>0)) return;
+  const f = g/100;
+  addEntry({ name: current.name, g, kcal: current.kcal*f, p: current.p*f, c: current.c*f, f: current.f*f });
+  current = null; hideCards();
+};
+$("manualBtn").onclick = () => { stopScan(); hideCards(); $("manualCard").hidden = false; $("mName").focus(); };
+$("cancelManual").onclick = hideCards;
+$("addManual").onclick = () => {
+  const name = $("mName").value.trim(), k = +$("mKcal").value;
+  if (!name || !(k>=0) || $("mKcal").value === ""){ showMsg("Bitte Name und Kalorien eintragen."); return; }
+  addEntry({ name, kcal:k }); $("mName").value = ""; $("mKcal").value = ""; hideCards();
+};
+$("editGoal").onclick = () => { $("goalInput").value = state.goal; $("goalEdit").hidden = false; };
+$("saveGoal").onclick = () => { const v = +$("goalInput").value; if (v>=500 && v<=6000){ state.goal = v; save(); } $("goalEdit").hidden = true; render(); };
+$("prevDay").onclick = () => shiftDay(-1);
+$("nextDay").onclick = () => shiftDay(1);
+
+render();
+</script>
+</body>
+</html>
