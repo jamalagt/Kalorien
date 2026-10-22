@@ -348,7 +348,7 @@ async function callClaude(b64, note){
       if (round || i) $("aiStatus").textContent = "Claude ist gerade ausgelastet, versuche es weiter …";
       const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        headers: { "content-type": "application/json", "authorization": "Bearer " + key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
         body: JSON.stringify({
           model: CLAUDE_MODELS[i], max_tokens: 1500,
           tools: [{ name: "essen_eintragen", description: "Gibt die erkannten Lebensmittel mit geschätzten Nährwerten zurück.", input_schema: ITEM_SCHEMA }],
@@ -367,7 +367,7 @@ async function callClaude(b64, note){
       }
       const m = j.error?.message || `Fehler ${r.status}`;
       if (/credit balance/i.test(m)) throw new Error("Dein Claude-Guthaben ist leer. Lade auf platform.claude.com neues Guthaben auf oder wechsle unten über „KI-Schlüssel ändern“ zu Gemini.");
-      if (r.status === 401) throw new Error("Der Claude-Schlüssel ist ungültig. Tippe unten auf „KI-Schlüssel ändern“ und füge ihn neu ein.");
+      if (r.status === 401) throw new Error("Der Claude-Schlüssel ist ungültig. Tippe unten auf „KI-Schlüssel ändern“ und füge ihn neu ein. (Claude meldet: " + m + ")");
       if (r.status === 403) throw new Error("Der Claude-Schlüssel hat keine Berechtigung. Erstelle auf platform.claude.com einen neuen.");
       if (r.status === 404) { lastErr = m; continue; }
       if (r.status === 429 || r.status >= 500) { busy = true; continue; }
