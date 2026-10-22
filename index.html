@@ -83,6 +83,9 @@ li.entry:first-child{border-top:0}
 textarea{font:inherit;width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--fg);resize:vertical;min-height:44px}
 ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:.92rem}
 a{color:var(--accent)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--soft);border-radius:12px}
+.seg button{border:0;background:none;padding:10px 6px;font-weight:600;font-size:.9rem;color:var(--muted)}
+.seg button[aria-checked="true"]{background:var(--card);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 .linkbtn{background:none;border:0;color:var(--accent);font:inherit;text-decoration:underline;padding:0;cursor:pointer}
 [hidden]{display:none!important}
 </style>
@@ -168,13 +171,27 @@ a{color:var(--accent)}
 
   <section class="card stack" id="keyCard" hidden>
     <h2>Fotoerkennung einrichten</h2>
-    <p class="small" style="margin:0">Die Fotoerkennung nutzt Google Gemini. Dafür brauchst du einmalig einen kostenlosen Schlüssel. Er wird nur auf diesem Gerät gespeichert.</p>
-    <ol class="steps">
-      <li>Öffne <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> und melde dich mit deinem Google-Konto an.</li>
-      <li>Tippe auf „Create API key“ und kopiere den Schlüssel.</li>
-      <li>Füge ihn hier ein und speichere.</li>
-    </ol>
-    <div><label for="keyInput">API-Schlüssel</label>
+    <div class="seg" role="radiogroup" aria-label="KI-Anbieter">
+      <button type="button" role="radio" id="provGemini" data-prov="gemini">Gemini · kostenlos</button>
+      <button type="button" role="radio" id="provClaude" data-prov="claude">Claude · Guthaben</button>
+    </div>
+    <div id="helpGemini" class="stack">
+      <p class="small" style="margin:0">Google Gemini ist kostenlos, hat aber ein Tageslimit und ist manchmal überlastet.</p>
+      <ol class="steps">
+        <li>Öffne <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> und melde dich mit deinem Google-Konto an.</li>
+        <li>Tippe auf „Create API key“ und kopiere den Schlüssel.</li>
+        <li>Füge ihn hier ein und speichere.</li>
+      </ol>
+    </div>
+    <div id="helpClaude" class="stack" hidden>
+      <p class="small" style="margin:0">Claude kostet pro Foto Bruchteile eines Cents und wird von deinem Guthaben abgezogen. Ohne „Auto-reload“ wird nie mehr abgebucht, als du aufgeladen hast.</p>
+      <ol class="steps">
+        <li>Öffne <a href="https://platform.claude.com/settings/billing" target="_blank" rel="noopener">platform.claude.com</a>, melde dich an und lade unter „Billing“ Guthaben auf.</li>
+        <li>Erstelle unter <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">„API Keys“</a> einen Schlüssel und kopiere ihn.</li>
+        <li>Füge ihn hier ein und speichere.</li>
+      </ol>
+    </div>
+    <div><label for="keyInput" id="keyLabel">Gemini-Schlüssel</label>
     <input id="keyInput" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza…"></div>
     <div class="row">
       <button class="ghost" id="removeKey">Entfernen</button>
@@ -203,7 +220,7 @@ a{color:var(--accent)}
     <p class="empty" id="empty">Noch nichts eingetragen. Scanne einen Barcode, um loszulegen.</p>
   </section>
 
-  <p class="small">Nährwerte von Open Food Facts, Fotoschätzung von Google Gemini. Fotos werden zur Erkennung an Google geschickt, alles andere bleibt auf diesem Gerät. <button class="linkbtn small" id="keySettings">KI-Schlüssel ändern</button></p>
+  <p class="small">Nährwerte von Open Food Facts, Fotoschätzung von Gemini oder Claude. Fotos gehen zur Erkennung an den gewählten Anbieter, alles andere bleibt auf diesem Gerät. <button class="linkbtn small" id="keySettings">KI-Schlüssel ändern</button></p>
 </main>
 
 <script>
@@ -272,11 +289,26 @@ function showMsg(t){ $("msg").textContent = t; $("msg").hidden = !t; }
 function hideCards(){ ["scanCard","typeCard","productCard","manualCard","keyCard","photoCard"].forEach(id=>$(id).hidden = true); showMsg(""); }
 
 // --- Fotoerkennung (Google Gemini) ---
-const KEY_STORE = "kalorien-gemini-key";
-const MODELS = ["gemini-2.5-flash", "gemini-flash-latest"];
+const KEY_STORES = { gemini: "kalorien-gemini-key", claude: "kalorien-claude-key" };
+const PROV_STORE = "kalorien-ai-provider";
+const MODELS = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-flash-lite-latest"];
+const CLAUDE_MODELS = ["claude-haiku-5-5", "claude-haiku-4-5"];
 let photoData = null, aiItems = [];
-function getKey(){ try { return localStorage.getItem(KEY_STORE) || ""; } catch(e){ return ""; } }
-function setKey(v){ try { v ? localStorage.setItem(KEY_STORE, v) : localStorage.removeItem(KEY_STORE); } catch(e){} }
+function lsGet(k){ try { return localStorage.getItem(k) || ""; } catch(e){ return ""; } }
+function lsSet(k, v){ try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch(e){} }
+function getProv(){ return lsGet(PROV_STORE) === "claude" ? "claude" : "gemini"; }
+function getKey(p = getProv()){ return lsGet(KEY_STORES[p]); }
+function setKey(v, p = getProv()){ lsSet(KEY_STORES[p], v); }
+let editProv = getProv();
+function showKeyCard(){
+  ["provGemini","provClaude"].forEach(id => $(id).setAttribute("aria-checked", $(id).dataset.prov === editProv));
+  $("helpGemini").hidden = editProv !== "gemini";
+  $("helpClaude").hidden = editProv !== "claude";
+  $("keyLabel").textContent = editProv === "claude" ? "Claude-Schlüssel" : "Gemini-Schlüssel";
+  $("keyInput").placeholder = editProv === "claude" ? "sk-ant-…" : "AIza…";
+  $("keyInput").value = getKey(editProv);
+  $("keyCard").hidden = false;
+}
 
 function downscale(file){
   return new Promise((resolve, reject) => {
@@ -300,8 +332,56 @@ Gib für genau diese Menge Kalorien (kcal), Eiweiß, Kohlenhydrate und Fett in G
 Namen kurz und auf Deutsch. Wenn kein Essen zu sehen ist, gib eine leere Liste zurück.
 In "hint" schreibst du einen kurzen Satz auf Deutsch, was die Schätzung unsicher macht.`;
 
+const ITEM_SCHEMA = { type: "object", properties: {
+  items: { type: "array", items: { type: "object", properties: {
+    name:{type:"string"}, grams:{type:"number"}, kcal:{type:"number"},
+    protein:{type:"number"}, carbs:{type:"number"}, fat:{type:"number"} },
+    required:["name","grams","kcal","protein","carbs","fat"] } },
+  hint: { type: "string" } }, required: ["items"] };
+
+async function callClaude(b64, note){
+  const key = getKey("claude");
+  let busy = false, lastErr = "";
+  for (let round = 0; round < 2; round++){
+    if (round) await new Promise(r => setTimeout(r, 2500));
+    for (let i = 0; i < CLAUDE_MODELS.length; i++){
+      if (round || i) $("aiStatus").textContent = "Claude ist gerade ausgelastet, versuche es weiter …";
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({
+          model: CLAUDE_MODELS[i], max_tokens: 1500,
+          tools: [{ name: "essen_eintragen", description: "Gibt die erkannten Lebensmittel mit geschätzten Nährwerten zurück.", input_schema: ITEM_SCHEMA }],
+          tool_choice: { type: "tool", name: "essen_eintragen" },
+          messages: [{ role: "user", content: [
+            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
+            { type: "text", text: PROMPT + (note ? `\nHinweis vom Nutzer: ${note}` : "") }
+          ]}]
+        })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok){
+        const t = (j.content || []).find(c => c.type === "tool_use");
+        if (t && t.input) return t.input;
+        lastErr = "Antwort war unvollständig."; continue;
+      }
+      const m = j.error?.message || `Fehler ${r.status}`;
+      if (/credit balance/i.test(m)) throw new Error("Dein Claude-Guthaben ist leer. Lade auf platform.claude.com neues Guthaben auf oder wechsle unten über „KI-Schlüssel ändern“ zu Gemini.");
+      if (r.status === 401) throw new Error("Der Claude-Schlüssel ist ungültig. Tippe unten auf „KI-Schlüssel ändern“ und füge ihn neu ein.");
+      if (r.status === 403) throw new Error("Der Claude-Schlüssel hat keine Berechtigung. Erstelle auf platform.claude.com einen neuen.");
+      if (r.status === 404) { lastErr = m; continue; }
+      if (r.status === 429 || r.status >= 500) { busy = true; continue; }
+      throw new Error(m);
+    }
+  }
+  if (busy) throw new Error("Claude ist gerade überlastet. Tippe gleich nochmal auf „Neu schätzen“.");
+  throw new Error("Die Erkennung hat nicht geklappt. " + lastErr);
+}
+
+async function callAI(b64, note){ return getProv() === "claude" ? callClaude(b64, note) : callGemini(b64, note); }
+
 async function callGemini(b64, note){
-  const key = getKey();
+  const key = getKey("gemini");
   const body = {
     contents: [{ parts: [
       { text: PROMPT + (note ? `\nHinweis vom Nutzer: ${note}` : "") },
@@ -318,31 +398,39 @@ async function callGemini(b64, note){
         hint: { type: "STRING" } }, required: ["items"] }
     }
   };
-  let lastErr = "";
-  for (const model of MODELS){
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body)
-    });
-    const j = await r.json().catch(() => ({}));
-    if (r.ok){
-      const text = j.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
-      return JSON.parse(text);
+  let busy = false, limit = false, lastErr = "";
+  // Bei Überlastung oder Limit: nächstes Modell probieren, dann eine zweite Runde nach kurzer Pause.
+  for (let round = 0; round < 2; round++){
+    if (round) await new Promise(r => setTimeout(r, 2500));
+    for (let i = 0; i < MODELS.length; i++){
+      $("aiStatus").textContent = (round || i) ? "Google ist gerade ausgelastet, versuche es weiter …" : "Erkenne dein Essen …";
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODELS[i]}:generateContent`, {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body)
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok){
+        const text = j.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("") || "";
+        try { return JSON.parse(text); } catch(e){ lastErr = "Antwort war unvollständig."; continue; }
+      }
+      const m = j.error?.message || `Fehler ${r.status}`;
+      if (r.status === 400 && /API key/i.test(m)) throw new Error("Der API-Schlüssel ist ungültig. Tippe unten auf „KI-Schlüssel ändern“ und füge ihn neu ein.");
+      if (r.status === 403) throw new Error("Der Schlüssel hat keinen Zugriff auf Gemini. Erstelle in AI Studio einen neuen Schlüssel.");
+      if (r.status === 429) { limit = true; continue; }
+      if (r.status === 404) { continue; }
+      if (r.status >= 500) { busy = true; continue; }
+      throw new Error(m);
     }
-    const m = j.error?.message || `Fehler ${r.status}`;
-    if (r.status === 404) { lastErr = m; continue; }
-    if (r.status === 400 && /API key/i.test(m)) throw new Error("Der API-Schlüssel ist ungültig. Tippe unten auf „KI-Schlüssel ändern“ und füge ihn neu ein.");
-    if (r.status === 403) throw new Error("Der Schlüssel hat keinen Zugriff auf Gemini. Erstelle in AI Studio einen neuen Schlüssel.");
-    if (r.status === 429) throw new Error("Das kostenlose Limit ist gerade erreicht. Versuch es später nochmal oder trag das Essen von Hand ein.");
-    throw new Error(m);
   }
-  throw new Error("Kein passendes Gemini-Modell gefunden: " + lastErr);
+  if (busy) throw new Error("Google ist gerade überlastet. Tippe in ein paar Minuten auf „Neu schätzen“ oder trag das Essen über „Ohne Barcode“ ein.");
+  if (limit) throw new Error("Das kostenlose Tageslimit ist erreicht. Morgen geht es wieder, bis dahin über „Ohne Barcode“ eintragen.");
+  throw new Error("Die Erkennung hat nicht geklappt. " + lastErr);
 }
 
 async function analyze(note){
   $("aiItems").innerHTML = ""; $("aiAdd").hidden = true; $("aiRetry").hidden = true; $("aiNoteWrap").hidden = true;
   $("aiStatus").style.color = ""; $("aiStatus").textContent = "Erkenne dein Essen …";
   try {
-    const res = await callGemini(photoData.split(",")[1], note);
+    const res = await callAI(photoData.split(",")[1], note);
     aiItems = (res.items || []).filter(i => i && i.name).map(i => ({ ...i, on: true, base: Math.max(+i.grams || 1, 1) }));
     $("aiNoteWrap").hidden = false; $("aiRetry").hidden = false;
     if (!aiItems.length){ $("aiStatus").textContent = res.hint || "Auf dem Foto wurde kein Essen erkannt."; return; }
@@ -350,7 +438,7 @@ async function analyze(note){
     renderAi();
   } catch(err){
     $("aiStatus").style.color = "var(--warn)";
-    $("aiStatus").textContent = err.message.includes("Failed to fetch") ? "Keine Verbindung zu Google. Prüfe dein Internet." : err.message;
+    $("aiStatus").textContent = err.message.includes("Failed to fetch") ? "Keine Verbindung. Prüfe dein Internet." : err.message;
     $("aiRetry").hidden = false;
   }
 }
@@ -462,9 +550,10 @@ $("editGoal").onclick = () => { $("goalInput").value = state.goal; $("goalEdit")
 $("saveGoal").onclick = () => { const v = +$("goalInput").value; if (v>=500 && v<=6000){ state.goal = v; save(); } $("goalEdit").hidden = true; render(); };
 $("photoBtn").onclick = () => {
   stopScan(); hideCards();
-  if (!getKey()){ $("keyInput").value = ""; $("keyCard").hidden = false; return; }
+  if (!getKey()){ editProv = getProv(); showKeyCard(); return; }
   $("photoInput").click();
 };
+["provGemini","provClaude"].forEach(id => $(id).onclick = () => { editProv = $(id).dataset.prov; showKeyCard(); });
 $("photoInput").onchange = async e => {
   const file = e.target.files[0]; e.target.value = "";
   if (!file) return;
@@ -479,13 +568,16 @@ $("aiAdd").onclick = () => {
   aiItems.forEach((it, i) => { const x = aiScaled(it, i); if (it.on && x.g > 0) addEntry(x); });
   photoData = null; aiItems = []; hideCards();
 };
-$("keySettings").onclick = () => { stopScan(); hideCards(); $("keyInput").value = getKey(); $("keyCard").hidden = false; $("keyCard").scrollIntoView({behavior:"smooth"}); };
+$("keySettings").onclick = () => { stopScan(); hideCards(); editProv = getProv(); showKeyCard(); $("keyCard").scrollIntoView({behavior:"smooth"}); };
 $("saveKey").onclick = () => {
   const v = $("keyInput").value.trim();
   if (!v){ showMsg("Bitte füge zuerst den Schlüssel ein."); return; }
-  setKey(v); hideCards(); $("photoInput").click();
+  setKey(v, editProv); lsSet(PROV_STORE, editProv); hideCards();
+  showMsg(editProv === "claude" ? "Fotoerkennung läuft jetzt mit Claude." : "Fotoerkennung läuft jetzt mit Gemini.");
+  $("msg").style.color = "var(--accent)";
+  setTimeout(() => { $("msg").style.color = ""; }, 3000);
 };
-$("removeKey").onclick = () => { setKey(""); $("keyInput").value = ""; hideCards(); showMsg("Schlüssel entfernt."); };
+$("removeKey").onclick = () => { setKey("", editProv); $("keyInput").value = ""; hideCards(); showMsg("Schlüssel entfernt."); };
 $("prevDay").onclick = () => shiftDay(-1);
 $("nextDay").onclick = () => shiftDay(1);
 
