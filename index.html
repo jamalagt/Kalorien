@@ -572,6 +572,7 @@ $("keySettings").onclick = () => { stopScan(); hideCards(); editProv = getProv()
 $("saveKey").onclick = () => {
   const v = $("keyInput").value.trim();
   if (!v){ showMsg("Bitte füge zuerst den Schlüssel ein."); return; }
+  if (v.startsWith("sk-ant-")) editProv = "claude"; else if (v.startsWith("AIza")) editProv = "gemini";
   setKey(v, editProv); lsSet(PROV_STORE, editProv); hideCards();
   showMsg(editProv === "claude" ? "Fotoerkennung läuft jetzt mit Claude." : "Fotoerkennung läuft jetzt mit Gemini.");
   $("msg").style.color = "var(--accent)";
